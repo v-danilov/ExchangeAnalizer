@@ -9,16 +9,19 @@ import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ExchangeContainer {
     private String filePath;
-    private Map<String, List<ExchangeData>> dataMap;
+    private Map<String, Queue<ExchangeData>> dataMap;
     private Map<String, Result> resultMap;
+    private List<Thread> threadList;
 
     public ExchangeContainer(String filePath) {
         this.filePath = filePath;
-        dataMap = new HashMap<String, List<ExchangeData>>();
-        resultMap = new HashMap<String, Result>();
+        dataMap = new HashMap<String, Queue<ExchangeData>>();
+        resultMap = new ConcurrentHashMap<String, Result>();
+        threadList = new ArrayList<Thread>();
     }
 
     public void parseFile() {
@@ -48,79 +51,120 @@ public class ExchangeContainer {
     public void sortData() {
         Set<String> keySet = dataMap.keySet();
         for (String key : keySet) {
-            List<ExchangeData> sortedList = dataMap.get(key);
+            List<ExchangeData> sortedList = new ArrayList<ExchangeData>(dataMap.get(key));
             Collections.sort(sortedList, new Comparator<ExchangeData>() {
                 @Override
                 public int compare(ExchangeData o1, ExchangeData o2) {
                     return o1.getTime().compareTo(o2.getTime());
                 }
             });
-            dataMap.put(key, sortedList);
+            Queue<ExchangeData> sortedQueue = new LinkedList<ExchangeData>(sortedList);
+            dataMap.put(key, sortedQueue);
         }
     }
+
 
     public void countTrades() {
         Set<String> keySet = dataMap.keySet();
 
-        for (String key : keySet) {
+        for (final String key : keySet) {
 
-            List<ExchangeData> data_list = dataMap.get(key);
-            List<Integer> transaction_counter = new ArrayList<Integer>();
+            final Queue<ExchangeData> data_queue = dataMap.get(key);
 
-            int list_size = data_list.size();
-
-            //Take first element
-            for (int i = 0; i < list_size; i++) {
-
-                int counter = 1;
-                Result result_for_exchange = new Result();
-
-                //Set up window start time
-                long start_window = data_list.get(i).getTime().getTime();
-
-                //Remember start time
-                result_for_exchange.setStart_window_time(data_list.get(i).getTime());
-
-                //Search all trades in 1s interval
-                for (int j = i + 1; j < list_size; j++) {
-
-                    long end_window = data_list.get(j).getTime().getTime() - 1000;
-
-                    //Trade belongs to 1s window
-                    if (start_window >= end_window) {
-                        counter++;
-                        result_for_exchange.setEnd_window_time(data_list.get(j).getTime());
-                    }
-
-                    //Trade doesnt belong to 1s window -> window is closed
-                    else
-                    {
-                        //If we already have data for the current exchange
-                        if(resultMap.containsKey(key)){
-
-                            //If old data have a lower value
-                            if(resultMap.get(key).getTrades_counter() < counter){
-                                //Save new value
-                                result_for_exchange.setTrades_counter(counter);
-                                resultMap.put(key,result_for_exchange);
-                            }
-                        }
-                        //If data is new
-                        else {
-
-                            //Save data
-                            result_for_exchange.setTrades_counter(counter);
-                            resultMap.put(key,result_for_exchange);
-                        }
-                        break;
-                    }
+            Thread thread = new Thread(new Runnable() {
+                public void run() {
+                    findMax(key, data_queue);
                 }
-            }
+            });
+            threadList.add(thread);
+            thread.start();
+
         }
     }
 
-    public void showStats(){
+    private void findMax(String key, Queue<ExchangeData> data_queue) {
+
+        Queue<ExchangeData> window_queue = new LinkedList<ExchangeData>();
+
+        //Take first element
+        while (!data_queue.isEmpty()) {
+
+            Result result_for_exchange = new Result();
+
+            //Set up window start time
+            ExchangeData start_element = data_queue.poll();
+
+            //Add element to one second window
+            window_queue.add(start_element);
+
+            //Remember start time
+            result_for_exchange.setStart_window_time(start_element.getTime());
+
+            boolean go_next = true;
+
+            //Search all trades in 1s interval
+            while (go_next && !data_queue.isEmpty()) {
+
+                ExchangeData end_element = data_queue.peek();
+                long end_window = end_element.getTime().getTime() - 1000;
+
+                //Check current time with window head
+                //If in range
+                if (window_queue.peek().getTime().getTime() >= end_window) {
+
+                    //Save end time
+                    result_for_exchange.setEnd_window_time(end_element.getTime());
+
+                    //Add new element from common list (queue)
+                    window_queue.add(data_queue.poll());
+
+                    go_next = true;
+                }
+                //Not in range
+                else {
+
+                    //Save current window size
+                    result_for_exchange.setTrades_counter(window_queue.size());
+
+                    //Check for max and save it
+                    saveMax(key, result_for_exchange);
+
+                    go_next = false;
+
+                    //Delete head of the window and add new
+                    window_queue.poll();
+                }
+
+            }
+
+        }
+    }
+
+    private void saveMax(String key, Result res) {
+        //If we already have data for the current exchange
+        if (resultMap.containsKey(key)) {
+
+            //If old data have a lower value
+            if (resultMap.get(key).getTrades_counter() < res.getTrades_counter()) {
+                //Save new value
+                resultMap.put(key, res);
+            }
+        }
+        //If data is new
+        else {
+            //Save data
+            resultMap.put(key, res);
+        }
+    }
+
+    public void showStats() throws InterruptedException {
+
+        for (Thread th : threadList) {
+            th.join();
+        }
+
         Set<String> keySet = resultMap.keySet();
+
         DateFormat dateFormat = new SimpleDateFormat("hh:mm:ss.SSS");
 
         System.out.println("------------------------------");
@@ -146,22 +190,23 @@ public class ExchangeContainer {
         if (dataMap.containsKey(key)) {
 
             //Update list
-            List<ExchangeData> updatedList = dataMap.get(key);
-            updatedList.add(element);
+            Queue<ExchangeData> updatedQueue = dataMap.get(key);
+            updatedQueue.add(element);
 
             //Update map
-            dataMap.put(key, updatedList);
+            dataMap.put(key, updatedQueue);
 
         } else {
 
             //Create list
-            List<ExchangeData> dataList = new ArrayList<ExchangeData>();
+            Queue<ExchangeData> dataQueue = new LinkedList<ExchangeData>();
 
-            //Add element tot list
-            dataList.add(element);
+            //Add element to queue
+            dataQueue.add(element);
+
 
             //Update map
-            dataMap.put(key, dataList);
+            dataMap.put(key, dataQueue);
         }
     }
 
