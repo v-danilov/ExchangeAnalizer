@@ -131,7 +131,7 @@ public class ExchangeContainer {
 
                     go_next = false;
 
-                    //Delete head of the window and add new
+                    //Delete head of the window to scale it
                     window_queue.poll();
                 }
 
