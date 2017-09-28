@@ -55,7 +55,7 @@ public class ExchangeContainer {
             Collections.sort(sortedList, new Comparator<ExchangeData>() {
                 @Override
                 public int compare(ExchangeData o1, ExchangeData o2) {
-                    return o1.getTime().compareTo(o2.getTime());
+                    return o1.getDate().compareTo(o2.getDate());
                 }
             });
             Queue<ExchangeData> sortedQueue = new LinkedList<ExchangeData>(sortedList);
@@ -82,12 +82,10 @@ public class ExchangeContainer {
         }
     }
 
+
     private void findMax(String key, Queue<ExchangeData> data_queue) {
 
         Queue<ExchangeData> window_queue = new LinkedList<ExchangeData>();
-
-        //Take first element
-        while (!data_queue.isEmpty()) {
 
             Result result_for_exchange = new Result();
 
@@ -98,22 +96,52 @@ public class ExchangeContainer {
             window_queue.add(start_element);
 
             //Remember start time
-            result_for_exchange.setStart_window_time(start_element.getTime());
+        result_for_exchange.setStart_window_time(start_element.getDate());
 
             boolean go_next = true;
 
             //Search all trades in 1s interval
-            while (go_next && !data_queue.isEmpty()) {
+        while (true) {
+
+            //Save end results if queue is empty
+            if (data_queue.isEmpty()) {
+                if (!window_queue.isEmpty()) {
+                    //Save current window size
+                    result_for_exchange.setTrades_counter(window_queue.size());
+                    //Check for max and save it
+                    saveMax(key, result_for_exchange);
+                }
+                break;
+            }
 
                 ExchangeData end_element = data_queue.peek();
-                long end_window = end_element.getTime().getTime() - 1000;
+            long end_window = end_element.getDate().getTime() - 1000;
 
                 //Check current time with window head
-                //If in range
-                if (window_queue.peek().getTime().getTime() >= end_window) {
+            //If window is empty
+            if (window_queue.isEmpty()) {
+
+                //Create new result object
+                result_for_exchange = new Result();
+
+                //Save start time
+                result_for_exchange.setStart_window_time(end_element.getDate());
 
                     //Save end time
-                    result_for_exchange.setEnd_window_time(end_element.getTime());
+                result_for_exchange.setEnd_window_time(end_element.getDate());
+
+                    //Add new element from common list (queue)
+                    window_queue.add(data_queue.poll());
+                    go_next = true;
+
+
+            }
+                else {
+                //If in range
+                if (window_queue.peek().getDate().getTime() >= end_window) {
+
+                    //Save end time
+                    result_for_exchange.setEnd_window_time(end_element.getDate());
 
                     //Add new element from common list (queue)
                     window_queue.add(data_queue.poll());
@@ -122,22 +150,24 @@ public class ExchangeContainer {
                 }
                 //Not in range
                 else {
-
-                    //Save current window size
-                    result_for_exchange.setTrades_counter(window_queue.size());
-
-                    //Check for max and save it
-                    saveMax(key, result_for_exchange);
-
-                    go_next = false;
-
-                    //Delete head of the window to scale it
+                    //If were added new elements:
+                    if (go_next) {
+                        //Save current window size
+                        result_for_exchange.setTrades_counter(window_queue.size());
+                        //Check for max and save it
+                        saveMax(key, result_for_exchange);
+                        go_next = false;
+                    }
+                    //Delete head of the window and add new
                     window_queue.poll();
+                    if (!window_queue.isEmpty()) {
+                        result_for_exchange = new Result();
+                        result_for_exchange.setStart_window_time(window_queue.peek().getDate());
+                    }
+                }
                 }
 
             }
-
-        }
     }
 
     private void saveMax(String key, Result res) {

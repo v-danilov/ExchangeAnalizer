@@ -6,24 +6,24 @@ import java.util.Date;
  * Created by Bounc on 26.09.2017.
  */
 public class ExchangeData {
-    private Date time;
+    private Date date;
     private double price;
     private int size;
 
     public ExchangeData() {}
 
-    public ExchangeData(Date time, double price, int size) {
-        this.time = time;
+    public ExchangeData(Date date, double price, int size) {
+        this.date = date;
         this.price = price;
         this.size = size;
     }
 
-    public Date getTime() {
-        return time;
+    public Date getDate() {
+        return date;
     }
 
-    public void setTime(Date time) {
-        this.time = time;
+    public void setDate(Date date) {
+        this.date = date;
     }
 
     public double getPrice() {
@@ -51,14 +51,14 @@ public class ExchangeData {
 
         if (Double.compare(that.price, price) != 0) return false;
         if (size != that.size) return false;
-        return time.equals(that.time);
+        return date.equals(that.date);
     }
 
     @Override
     public int hashCode() {
         int result;
         long temp;
-        result = time.hashCode();
+        result = date.hashCode();
         temp = Double.doubleToLongBits(price);
         result = 31 * result + (int) (temp ^ (temp >>> 32));
         result = 31 * result + size;
@@ -68,7 +68,7 @@ public class ExchangeData {
     @Override
     public String toString() {
         return "ExchangeData{" +
-                "time=" + time +
+                "date=" + date +
                 ", price=" + price +
                 ", size=" + size +
                 '}';
